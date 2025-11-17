@@ -3,6 +3,9 @@ from datetime import datetime
 from typing import List, Optional
 from enum import Enum
 
+from lambda.domain.validators.allergy_validator import AllergyValidator
+from lambda.domain.validators.diet_validator import DietValidator
+
 
 class SkillLevel(Enum):
     BEGINNER = "beginner"
@@ -27,11 +30,65 @@ class User:
         if self.last_updated is None:
             self.last_updated = datetime.utcnow()
 
+        self.allergies = AllergyValidator.validate_allergies(self.allergies)
+        self.dietary_restrictions = self._validate_dietary_restrictions(self.dietary_restrictions)
+
+    def _validate_dietary_restrictions(self, restrictions: List[str]) -> List[str]:
+        validated = []
+        for restriction in restrictions:
+            normalized = DietValidator.normalize_diet(restriction)
+            if DietValidator.validate_diet(normalized) and normalized not in validated:
+                validated.append(normalized)
+        return validated
+
     def update_preferences(self, **kwargs):
         for key, value in kwargs.items():
             if hasattr(self, key):
                 setattr(self, key, value)
         self.last_updated = datetime.utcnow()
+
+    def add_allergy(self, allergen: str) -> bool:
+        normalized = AllergyValidator.normalize_allergen(allergen)
+
+        if AllergyValidator.is_duplicate(normalized, self.allergies):
+            return False
+
+        if AllergyValidator.validate_allergen(normalized):
+            self.allergies.append(normalized)
+            self.last_updated = datetime.utcnow()
+            return True
+
+        return False
+
+    def remove_allergy(self, allergen: str) -> bool:
+        normalized = AllergyValidator.normalize_allergen(allergen)
+        normalized_allergies = [AllergyValidator.normalize_allergen(a) for a in self.allergies]
+
+        if normalized in normalized_allergies:
+            index = normalized_allergies.index(normalized)
+            self.allergies.pop(index)
+            self.last_updated = datetime.utcnow()
+            return True
+
+        return False
+
+    def set_dietary_restriction(self, diet: str) -> bool:
+        normalized = DietValidator.normalize_diet(diet)
+
+        if DietValidator.validate_diet(normalized):
+            self.dietary_restrictions = [normalized]
+            self.last_updated = datetime.utcnow()
+            return True
+
+        return False
+
+    def set_servings(self, servings: int) -> bool:
+        if 1 <= servings <= 12:
+            self.servings = servings
+            self.last_updated = datetime.utcnow()
+            return True
+
+        return False
 
     def to_dict(self):
         return {

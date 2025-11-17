@@ -1,5 +1,5 @@
 import os
-from ask_sdk_core.skill_builder import SkillBuilder
+from ask_sdk_core.skill_builder import CustomSkillBuilder
 from ask_sdk_core.dispatch_components import AbstractRequestHandler, AbstractExceptionHandler
 from ask_sdk_core.handler_input import HandlerInput
 from ask_sdk_model import Response
@@ -9,6 +9,7 @@ from lambda.infrastructure.repositories.dynamodb_user_repository import DynamoDB
 from lambda.infrastructure.repositories.dynamodb_recipe_repository import DynamoDBRecipeRepository
 from lambda.infrastructure.repositories.dynamodb_session_repository import DynamoDBSessionRepository
 from lambda.infrastructure.external.spoonacular_client import SpoonacularClient
+from lambda.infrastructure.persistence.dynamodb_persistence_adapter import AlexaDynamoDBPersistenceAdapter
 
 from lambda.application.services.user_service import UserService
 from lambda.application.services.recipe_service import RecipeService
@@ -19,11 +20,31 @@ from lambda.presentation.handlers.search_handler import SearchByIngredientsInten
 from lambda.presentation.handlers.cooking_handler import (
     StartCookingIntentHandler,
     NextStepIntentHandler,
-    RepeatStepIntentHandler
+    RepeatStepIntentHandler,
+    PauseCookingIntentHandler,
+    ResumeCookingIntentHandler
+)
+from lambda.presentation.handlers.profile_handler import (
+    AddAllergyIntentHandler,
+    RemoveAllergyIntentHandler,
+    ListAllergiesIntentHandler,
+    SetDietaryRestrictionIntentHandler,
+    SetServingsIntentHandler,
+    GetProfileIntentHandler
+)
+from lambda.presentation.handlers.onboarding_handler import (
+    CaptureAllergiesIntentHandler,
+    NoAllergyIntentHandler
+)
+from lambda.presentation.handlers.allergy_warning_handler import (
+    ProceedWithAllergenRecipeHandler,
+    DeclineAllergenRecipeHandler
 )
 
 
-db_client = DynamoDBClient(region_name=os.getenv('AWS_REGION', 'us-east-1'))
+region = os.getenv('AWS_REGION', 'us-east-1')
+
+db_client = DynamoDBClient(region_name=region)
 
 user_repository = DynamoDBUserRepository(db_client)
 recipe_repository = DynamoDBRecipeRepository(db_client)
@@ -35,6 +56,11 @@ session_service = SessionService(session_repository)
 
 api_key = os.getenv('SPOONACULAR_API_KEY')
 spoonacular_client = SpoonacularClient(api_key)
+
+persistence_adapter = AlexaDynamoDBPersistenceAdapter(
+    table_name='AlexaSessionAttributes',
+    region_name=region
+)
 
 
 class HelpIntentHandler(AbstractRequestHandler):
@@ -80,13 +106,25 @@ class CatchAllExceptionHandler(AbstractExceptionHandler):
         )
 
 
-sb = SkillBuilder()
+sb = CustomSkillBuilder(persistence_adapter=persistence_adapter.get_adapter())
 
 sb.add_request_handler(LaunchRequestHandler(user_service))
+sb.add_request_handler(CaptureAllergiesIntentHandler(user_service))
+sb.add_request_handler(NoAllergyIntentHandler(user_service))
+sb.add_request_handler(ProceedWithAllergenRecipeHandler(recipe_service))
+sb.add_request_handler(DeclineAllergenRecipeHandler())
 sb.add_request_handler(SearchByIngredientsIntentHandler(user_service, recipe_service, spoonacular_client))
 sb.add_request_handler(StartCookingIntentHandler(session_service, recipe_service))
 sb.add_request_handler(NextStepIntentHandler(session_service, recipe_service))
 sb.add_request_handler(RepeatStepIntentHandler(session_service, recipe_service))
+sb.add_request_handler(PauseCookingIntentHandler(session_service))
+sb.add_request_handler(ResumeCookingIntentHandler(session_service, recipe_service))
+sb.add_request_handler(AddAllergyIntentHandler(user_service))
+sb.add_request_handler(RemoveAllergyIntentHandler(user_service))
+sb.add_request_handler(ListAllergiesIntentHandler(user_service))
+sb.add_request_handler(SetDietaryRestrictionIntentHandler(user_service))
+sb.add_request_handler(SetServingsIntentHandler(user_service))
+sb.add_request_handler(GetProfileIntentHandler(user_service))
 sb.add_request_handler(HelpIntentHandler())
 sb.add_request_handler(CancelOrStopIntentHandler())
 sb.add_request_handler(SessionEndedRequestHandler())

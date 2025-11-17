@@ -1,6 +1,7 @@
 from typing import List, Optional, Dict
 from lambda.domain.models import Recipe, User
 from lambda.domain.repositories import IRecipeRepository
+from lambda.domain.services.allergy_checker import AllergyChecker
 
 
 class RecipeService:
@@ -48,3 +49,14 @@ class RecipeService:
                 return 1
 
         return sorted(recipes, key=sort_key)
+
+    def check_allergens_in_recipe(self, recipe: Recipe, user_allergies: List[str]) -> Dict[str, List[str]]:
+        ingredient_names = [ing.name for ing in recipe.ingredients]
+        return AllergyChecker.check_recipe_for_allergens(ingredient_names, user_allergies)
+
+    def is_recipe_safe(self, recipe: Recipe, user_allergies: List[str]) -> bool:
+        allergens_found = self.check_allergens_in_recipe(recipe, user_allergies)
+        return len(allergens_found) == 0
+
+    def filter_by_allergies(self, recipes: List[Recipe], user_allergies: List[str]) -> List[Recipe]:
+        return [r for r in recipes if self.is_recipe_safe(r, user_allergies)]

@@ -16,14 +16,23 @@ class LaunchRequestHandler(AbstractRequestHandler):
         user_id = handler_input.request_envelope.context.system.user.user_id
         user = self.user_service.get_or_create_user(user_id)
 
-        if not user.dietary_restrictions and not user.skill_level:
-            speak_output = ("¡Hola! Bienvenido a Chef Personal, tu asistente culinario inteligente. "
-                          "Antes de comenzar, me gustaría conocer tus preferencias culinarias. "
-                          "¿Tienes alguna restricción alimentaria como vegetariano, vegano, sin gluten, o alguna alergia?")
+        session_attr = handler_input.attributes_manager.session_attributes
+
+        if not user.allergies and session_attr.get('allergies_asked') != 'true':
+            session_attr['awaiting_allergies'] = 'true'
+            session_attr['allergies_asked'] = 'true'
+            speak_output = (
+                "¡Bienvenido a Chef Personal! Soy tu asistente culinario inteligente. "
+                "Para brindarte la mejor experiencia, ¿tienes alguna alergia alimentaria que deba tener en cuenta? "
+                "Por ejemplo: cacahuetes, nueces, leche, huevos, mariscos. "
+                "Si no tienes alergias, solo di 'ninguna'."
+            )
         else:
-            speak_output = (f"¡Hola de nuevo! ¿Qué te gustaría cocinar hoy? "
-                          "Puedo ayudarte a buscar recetas por ingredientes, "
-                          "mostrarte tus favoritas, o guiarte paso a paso en la cocina.")
+            speak_output = (
+                "¡Hola! ¿Qué te gustaría cocinar hoy? "
+                "Puedo ayudarte a buscar recetas por ingredientes, "
+                "mostrarte tus favoritas, o guiarte paso a paso en la cocina."
+            )
 
         return (
             handler_input.response_builder

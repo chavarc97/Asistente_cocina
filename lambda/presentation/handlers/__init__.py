@@ -3,7 +3,25 @@ from .search_handler import SearchByIngredientsIntentHandler
 from .cooking_handler import (
     StartCookingIntentHandler,
     NextStepIntentHandler,
-    RepeatStepIntentHandler
+    RepeatStepIntentHandler,
+    PauseCookingIntentHandler,
+    ResumeCookingIntentHandler
+)
+from .profile_handler import (
+    AddAllergyIntentHandler,
+    RemoveAllergyIntentHandler,
+    ListAllergiesIntentHandler,
+    SetDietaryRestrictionIntentHandler,
+    SetServingsIntentHandler,
+    GetProfileIntentHandler
+)
+from .onboarding_handler import (
+    CaptureAllergiesIntentHandler,
+    NoAllergyIntentHandler
+)
+from .allergy_warning_handler import (
+    ProceedWithAllergenRecipeHandler,
+    DeclineAllergenRecipeHandler
 )
 
 __all__ = [
@@ -11,5 +29,17 @@ __all__ = [
     'SearchByIngredientsIntentHandler',
     'StartCookingIntentHandler',
     'NextStepIntentHandler',
-    'RepeatStepIntentHandler'
+    'RepeatStepIntentHandler',
+    'PauseCookingIntentHandler',
+    'ResumeCookingIntentHandler',
+    'AddAllergyIntentHandler',
+    'RemoveAllergyIntentHandler',
+    'ListAllergiesIntentHandler',
+    'SetDietaryRestrictionIntentHandler',
+    'SetServingsIntentHandler',
+    'GetProfileIntentHandler',
+    'CaptureAllergiesIntentHandler',
+    'NoAllergyIntentHandler',
+    'ProceedWithAllergenRecipeHandler',
+    'DeclineAllergenRecipeHandler'
 ]

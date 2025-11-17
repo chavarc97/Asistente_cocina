@@ -18,7 +18,8 @@ class SpoonacularClient:
             'apiKey': self.api_key,
             'ingredients': ','.join(ingredients),
             'number': number,
-            'ranking': 2
+            'ranking': 2,
+            'addRecipeInformation': True
         }
 
         if diet:
@@ -26,7 +27,35 @@ class SpoonacularClient:
 
         response = self.session.get(endpoint, params=params)
         response.raise_for_status()
-        return response.json()
+        recipes = response.json()
+
+        for recipe in recipes:
+            if 'id' in recipe and 'readyInMinutes' not in recipe:
+                detailed_info = self.get_recipe_summary(str(recipe['id']))
+                recipe.update(detailed_info)
+
+        return recipes
+
+    def get_recipe_summary(self, recipe_id: str) -> Dict:
+        endpoint = f"{self.BASE_URL}/recipes/{recipe_id}/information"
+        params = {
+            'apiKey': self.api_key,
+            'includeNutrition': False
+        }
+
+        try:
+            response = self.session.get(endpoint, params=params)
+            response.raise_for_status()
+            data = response.json()
+            return {
+                'readyInMinutes': data.get('readyInMinutes', 0),
+                'servings': data.get('servings', 1),
+                'summary': data.get('summary', ''),
+                'dishTypes': data.get('dishTypes', []),
+                'cuisines': data.get('cuisines', [])
+            }
+        except:
+            return {}
 
     def get_recipe_information(self, recipe_id: str) -> Optional[Recipe]:
         endpoint = f"{self.BASE_URL}/recipes/{recipe_id}/information"

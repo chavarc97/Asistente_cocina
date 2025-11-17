@@ -82,7 +82,7 @@ class RepeatStepIntentHandler(AbstractRequestHandler):
         self.recipe_service = recipe_service
 
     def can_handle(self, handler_input: HandlerInput) -> bool:
-        return is_intent_name("AMAZON.RepeatIntent")(handler_input)
+        return is_intent_name("RepeatStepIntent")(handler_input)
 
     def handle(self, handler_input: HandlerInput) -> Response:
         session_attrs = handler_input.attributes_manager.session_attributes
@@ -103,3 +103,79 @@ class RepeatStepIntentHandler(AbstractRequestHandler):
             speak_output = "Ya completaste todos los pasos."
 
         return handler_input.response_builder.speak(speak_output).ask("¿Listo para continuar?").response
+
+
+class PauseCookingIntentHandler(AbstractRequestHandler):
+    def __init__(self, session_service: SessionService):
+        self.session_service = session_service
+
+    def can_handle(self, handler_input: HandlerInput) -> bool:
+        return is_intent_name("AMAZON.PauseIntent")(handler_input)
+
+    def handle(self, handler_input: HandlerInput) -> Response:
+        session_attrs = handler_input.attributes_manager.session_attributes
+        session_id = session_attrs.get('cooking_session_id')
+
+        if not session_id:
+            speak_output = "No hay una sesión de cocina activa para pausar."
+            return handler_input.response_builder.speak(speak_output).response
+
+        cooking_session = self.session_service.session_repository.get_by_id(session_id)
+        cooking_session.pause()
+        self.session_service.session_repository.update(cooking_session)
+
+        persistent_attrs = handler_input.attributes_manager.persistent_attributes
+        persistent_attrs['paused_session_id'] = session_id
+        persistent_attrs['paused_at_step'] = cooking_session.current_step
+        handler_input.attributes_manager.save_persistent_attributes()
+
+        speak_output = (
+            "He pausado la receta. Tu progreso está guardado. "
+            "Cuando quieras continuar, solo di 'Alexa, abre Chef Personal y continúa cocinando'."
+        )
+
+        return handler_input.response_builder.speak(speak_output).response
+
+
+class ResumeCookingIntentHandler(AbstractRequestHandler):
+    def __init__(self, session_service: SessionService, recipe_service: RecipeService):
+        self.session_service = session_service
+        self.recipe_service = recipe_service
+
+    def can_handle(self, handler_input: HandlerInput) -> bool:
+        return is_intent_name("AMAZON.ResumeIntent")(handler_input)
+
+    def handle(self, handler_input: HandlerInput) -> Response:
+        persistent_attrs = handler_input.attributes_manager.persistent_attributes
+        session_id = persistent_attrs.get('paused_session_id')
+
+        if not session_id:
+            speak_output = "No tienes ninguna receta pausada. ¿Qué te gustaría cocinar?"
+            return handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        cooking_session = self.session_service.session_repository.get_by_id(session_id)
+
+        if not cooking_session:
+            speak_output = "Tu sesión anterior expiró. ¿Quieres buscar una nueva receta?"
+            return handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
+        cooking_session.resume()
+        self.session_service.session_repository.update(cooking_session)
+
+        session_attrs = handler_input.attributes_manager.session_attributes
+        session_attrs['cooking_session_id'] = session_id
+
+        recipe = self.recipe_service.get_recipe(cooking_session.recipe_id)
+        current_step_num = cooking_session.current_step
+
+        if current_step_num < len(recipe.steps):
+            step = recipe.steps[current_step_num]
+            speak_output = (
+                f"Continuamos con {recipe.title}. "
+                f"Estabas en el paso {current_step_num + 1}: {step.instruction}. "
+                "¿Listo para continuar?"
+            )
+        else:
+            speak_output = "Ya habías completado esta receta. ¿Quieres buscar otra?"
+
+        return handler_input.response_builder.speak(speak_output).ask("¿Continúas?").response
