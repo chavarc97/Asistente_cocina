@@ -1,12 +1,13 @@
+// ==============================================
+// SERVICE REGISTRY
+// Demuestra: Service Discovery Pattern
+// ==============================================
+
 class ServiceRegistry {
     constructor() {
         this.services = {
-            /* 
-            Add services here in the format:
-            'appointment-service': process.env.APPOINTMENT_SERVICE_URL || 'http://appointment-service:8000',
-            'patient-service': process.env.PATIENT_SERVICE_URL || 'http://patient-service:3002',
-            'notification-service': process.env.NOTIFICATION_SERVICE_URL || 'http://notification-service:3003'
-            */
+            'recipe-service': process.env.RECIPE_SERVICE_URL || 'http://recipe-service:3001',
+            'user-service': process.env.USER_SERVICE_URL || 'http://user-service:3002'
         };
     }
 
@@ -14,17 +15,52 @@ class ServiceRegistry {
         return this.services;
     }
 
+    getServiceUrl(serviceName) {
+        return this.services[serviceName] || null;
+    }
+
     getEndpoints() {
         return [
-            /* 
-            Return service endpoints here in the format:
-            { name: 'appointments', path: '/api/appointments', target: this.services['appointment-service'] },
-            { name: 'patients', path: '/api/patients', target: this.services['patient-service'] },
-            { name: 'notifications', path: '/api/notifications', target: this.services['notification-service'] }
-            */
+            {
+                name: 'recipes',
+                path: '/api/recipes',
+                target: this.services['recipe-service'],
+                methods: ['GET', 'POST'],
+                description: 'Búsqueda y gestión de recetas'
+            },
+            {
+                name: 'users',
+                path: '/api/users',
+                target: this.services['user-service'],
+                methods: ['GET', 'POST', 'PUT'],
+                description: 'Gestión de usuarios'
+            },
+            {
+                name: 'favorites',
+                path: '/api/favorites',
+                target: this.services['user-service'],
+                methods: ['GET', 'POST', 'DELETE'],
+                description: 'Gestión de recetas favoritas'
+            },
+            {
+                name: 'health',
+                path: '/health',
+                target: 'internal',
+                methods: ['GET'],
+                description: 'Estado del servicio'
+            }
         ];
+    }
+
+    registerService(name, url) {
+        this.services[name] = url;
+        console.log(`Service registered: ${name} -> ${url}`);
+    }
+
+    unregisterService(name) {
+        delete this.services[name];
+        console.log(`Service unregistered: ${name}`);
     }
 }
 
-// 👇 EXPORTA SOLO LA CLASE
 module.exports = ServiceRegistry;

@@ -1,0 +1,118 @@
+{
+  "name": "Chef Bot - Telegram Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "telegram",
+        "options": {}
+      },
+      "id": "webhook-telegram",
+      "name": "Telegram Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "telegram-bot"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Parse incoming Telegram message\nconst body = $input.item.json.body;\nconst message = body.message || body.callback_query?.message;\nconst chat_id = message?.chat?.id;\nconst text = body.message?.text || body.callback_query?.data;\nconst user_id = body.message?.from?.id || body.callback_query?.from?.id;\nconst username = body.message?.from?.username || body.callback_query?.from?.username;\n\nreturn {\n  json: {\n    chat_id,\n    user_id,\n    username,\n    text,\n    is_command: text?.startsWith('/'),\n    is_callback: !!body.callback_query,\n    callback_id: body.callback_query?.id,\n    original_message: body\n  }\n};"
+      },
+      "id": "parse-message",
+      "name": "Parse Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.text}}",
+              "operation": "startsWith",
+              "value2": "/start"
+            }
+          ]
+        }
+      },
+      "id": "route-start",
+      "name": "Route: /start",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.text}}",
+              "operation": "startsWith",
+              "value2": "/buscar"
+            }
+          ]
+        }
+      },
+      "id": "route-search",
+      "name": "Route: /buscar",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.text}}",
+              "operation": "startsWith",
+              "value2": "/favoritos"
+            }
+          ]
+        }
+      },
+      "id": "route-favorites",
+      "name": "Route: /favoritos",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 600]
+    }
+  ],
+  "connections": {
+    "Telegram Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Message": {
+      "main": [
+        [
+          {
+            "node": "Route: /start",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Route: /buscar",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Route: /favoritos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

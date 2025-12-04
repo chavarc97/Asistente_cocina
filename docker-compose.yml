@@ -1,46 +1,145 @@
 services:
-  # PostgreSQL Database Service
+  # ==============================================
+  # BASE DE DATOS
+  # ==============================================
+  
   postgres:
     image: postgres:15-alpine
-    container_name: db_cooking_app
+    container_name: chef_postgres
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-admin}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-SecurePass123!}
-      POSTGRES_DB: ${POSTGRES_DB:-cooking_db}
-    ports:
-      - "5433:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-chef_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ChefSecure123!}
+      POSTGRES_DB: ${POSTGRES_DB:-chef_db}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5433:5432"  # Changed to 5433 to avoid conflict with local PostgreSQL
     networks:
-      - cooking_network
+      - chef-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chef_user}"]
       interval: 10s
       timeout: 5s
       retries: 5
-    
-  # API Gateway Service
-  api_gateway:
+    restart: unless-stopped
+
+  # ==============================================
+  # CACHÉ (REDIS)
+  # ==============================================
+  
+  redis:
+    image: redis:7-alpine
+    container_name: chef_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - chef-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ==============================================
+  # SERVICIOS DE BACKEND
+  # ==============================================
+  
+  # API Gateway (Node.js)
+  api-gateway:
     build:
       context: ./services/api-gateway
       dockerfile: Dockerfile
-    container_name: api-gateway
+    container_name: chef_api_gateway
     environment:
       PORT: 3000
-      NODE_ENV: production
+      NODE_ENV: ${NODE_ENV:-production}
+      RECIPE_SERVICE_URL: ${RECIPE_SERVICE_URL:-http://recipe-service:3001}
+      USER_SERVICE_URL: ${USER_SERVICE_URL:-http://user-service:3002}
+      JWT_SECRET: ${JWT_SECRET}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    depends_on:
+      recipe-service:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+    networks:
+      - chef-network
+    restart: unless-stopped
 
+  # Recipe Service (Python/FastAPI)
+  recipe-service:
+    build:
+      context: ./services/recipe-service
+      dockerfile: Dockerfile
+    container_name: chef_recipe_service
+    environment:
+      PORT: 3001
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      THEMEALDB_BASE_URL: ${THEMEALDB_BASE_URL:-https://www.themealdb.com/api/json/v1/1}
+      NODE_ENV: ${NODE_ENV:-production}
+    ports:
+      - "3001:3001"
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - chef-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
 
-  # ==========================================
-  # SERVICES
-  # ==========================================
+  # User Service (Node.js)
+  user-service:
+    build:
+      context: ./services/user-service
+      dockerfile: Dockerfile
+    container_name: chef_user_service
+    environment:
+      PORT: 3002
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      NODE_ENV: ${NODE_ENV:-production}
+    ports:
+      - "3002:3002"
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - chef-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3002/health', (r) => {r.statusCode === 200 ? process.exit(0) : process.exit(1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  # ==============================================
+  # N8N - ORQUESTADOR DE WORKFLOWS
+  # ==============================================
   
-
-
-  # N8N Workflow Automation
   n8n:
     image: n8nio/n8n:latest
-    container_name: n8n
+    container_name: chef_n8n
     environment:
       - N8N_BASIC_AUTH_ACTIVE=${N8N_BASIC_AUTH_ACTIVE:-true}
       - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:-admin}
@@ -53,33 +152,24 @@ services:
       - N8N_METRICS=true
       - N8N_SKIP_WEBHOOK_DEREGISTRATION_SHUTDOWN=true
       - N8N_PUSH_BACKEND=websocket
-      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
-      - DB_SQLITE_POOL_SIZE=10
-      - N8N_RUNNERS_ENABLED=false
-      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
-      - N8N_GIT_NODE_DISABLE_BARE_REPOS=true
     ports:
       - "5678:5678"
     volumes:
       - n8n_data:/home/node/.n8n
       - ./n8n/workflows:/home/node/workflows
     networks:
-      - appointment-network
+      - chef-network
     restart: unless-stopped
 
-  # Redis Cache (opcional para session management)
-  redis:
-    image: redis:7-alpine
-    container_name: redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - appointment-network
-    restart: unless-stopped
+# ==============================================
+# REDES Y VOLÚMENES
+# ==============================================
 
-  volumes:
-    postgres_data:
-    n8n_data:
-    redis_data:
+networks:
+  chef-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  n8n_data:
+  redis_data:
