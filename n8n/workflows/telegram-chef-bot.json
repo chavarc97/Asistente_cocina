@@ -1,85 +1,563 @@
 {
-  "name": "Chef Bot - Telegram Workflow",
+  "name": "Chef Bot - Telegram Workflow Completo",
   "nodes": [
     {
       "parameters": {
-        "path": "telegram",
-        "options": {}
+        "updates": [
+          "message",
+          "callback_query"
+        ]
       },
-      "id": "webhook-telegram",
-      "name": "Telegram Webhook",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 1,
-      "position": [250, 300],
-      "webhookId": "telegram-bot"
+      "id": "telegram-trigger",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 500],
+      "webhookId": "chef-bot-webhook",
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram_credentials",
+          "name": "Telegram Bot API"
+        }
+      }
     },
     {
       "parameters": {
-        "functionCode": "// Parse incoming Telegram message\nconst body = $input.item.json.body;\nconst message = body.message || body.callback_query?.message;\nconst chat_id = message?.chat?.id;\nconst text = body.message?.text || body.callback_query?.data;\nconst user_id = body.message?.from?.id || body.callback_query?.from?.id;\nconst username = body.message?.from?.username || body.callback_query?.from?.username;\n\nreturn {\n  json: {\n    chat_id,\n    user_id,\n    username,\n    text,\n    is_command: text?.startsWith('/'),\n    is_callback: !!body.callback_query,\n    callback_id: body.callback_query?.id,\n    original_message: body\n  }\n};"
+        "jsCode": "// Parse incoming Telegram message for Chef Bot\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const data = item.json;\n  const message = data.message || data.callback_query?.message;\n  const callbackQuery = data.callback_query;\n  \n  if (!message && !callbackQuery) {\n    continue;\n  }\n  \n  const text = data.message?.text || callbackQuery?.data || '';\n  const chatId = message?.chat?.id;\n  const userId = data.message?.from?.id || callbackQuery?.from?.id;\n  const username = data.message?.from?.username || callbackQuery?.from?.username;\n  const firstName = data.message?.from?.first_name || callbackQuery?.from?.first_name;\n  const lastName = data.message?.from?.last_name || callbackQuery?.from?.last_name;\n  \n  // Parse command and parameters\n  let command = '';\n  let params = {};\n  \n  if (text.startsWith('/')) {\n    const parts = text.split(' ');\n    command = parts[0].substring(1).toLowerCase();\n    \n    // Parse parameters based on command\n    switch(command) {\n      case 'buscar':\n        // /buscar pollo arroz tomate -> ingredients: ['pollo', 'arroz', 'tomate']\n        const ingredients = parts.slice(1).filter(p => p.trim());\n        params = {\n          ingredients: ingredients.slice(0, 3) // Máximo 3 ingredientes\n        };\n        break;\n        \n      case 'receta':\n        // /receta 52940 -> recipeId: '52940'\n        params = {\n          recipeId: parts[1] || null\n        };\n        break;\n        \n      case 'favorito':\n        // /favorito 52940 Chicken Curry -> recipeId, recipeName\n        params = {\n          recipeId: parts[1] || null,\n          recipeName: parts.slice(2).join(' ') || null\n        };\n        break;\n        \n      case 'eliminar_favorito':\n        params = {\n          recipeId: parts[1] || null\n        };\n        break;\n        \n      case 'filtro':\n        // /filtro vegetarian\n        const validFilters = ['none', 'vegetarian', 'vegan', 'gluten_free'];\n        const filter = parts[1]?.toLowerCase();\n        params = {\n          filter: validFilters.includes(filter) ? filter : null,\n          showOptions: !filter\n        };\n        break;\n        \n      case 'convertir':\n        // /convertir 2 tazas a ml\n        const amount = parseFloat(parts[1]);\n        const fromUnit = parts[2];\n        const toUnit = parts[4] || parts[3]; // handle 'a' word\n        params = {\n          amount: isNaN(amount) ? null : amount,\n          fromUnit: fromUnit,\n          toUnit: toUnit\n        };\n        break;\n        \n      case 'paso':\n        // /paso 3 -> stepNumber: 3\n        params = {\n          stepNumber: parseInt(parts[1]) || null\n        };\n        break;\n        \n      default:\n        // No params needed for start, favoritos, recomendar, ayuda\n        break;\n    }\n  } else {\n    // Natural language - treat as search query\n    command = 'natural';\n    params = { text: text };\n  }\n  \n  results.push({\n    json: {\n      command,\n      params,\n      chatId,\n      userId,\n      username,\n      firstName,\n      lastName,\n      originalText: text,\n      isCallback: !!callbackQuery,\n      callbackId: callbackQuery?.id,\n      timestamp: new Date().toISOString()\n    }\n  });\n}\n\nreturn results;"
       },
       "id": "parse-message",
       "name": "Parse Message",
       "type": "n8n-nodes-base.code",
-      "typeVersion": 1,
-      "position": [450, 300]
+      "typeVersion": 2,
+      "position": [440, 500]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "start",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "start"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "buscar",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "buscar"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "receta",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "receta"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "favoritos",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "favoritos"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "favorito",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "agregar_favorito"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "eliminar_favorito",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "eliminar_favorito"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "filtro",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "filtro"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "recomendar",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "recomendar"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "convertir",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "convertir"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "rightValue": "ayuda",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ayuda"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "command-router",
+      "name": "Command Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [640, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate welcome message for Chef Bot\nconst firstName = $input.first().json.firstName || 'Chef';\nconst userId = $input.first().json.userId;\nconst chatId = $input.first().json.chatId;\n\nconst welcomeMessage = `🍳 ¡Hola ${firstName}! Bienvenido a **Chef Bot**\n\nSoy tu asistente culinario personal. Puedo ayudarte a:\n\n🔍 Encontrar recetas por ingredientes\n⭐ Guardar tus recetas favoritas\n🥗 Filtrar por preferencias dietéticas\n📏 Convertir medidas de cocina\n💡 Darte recomendaciones personalizadas\n\n**Comandos Disponibles:**\n\n🔍 /buscar [ingredientes] - Buscar recetas\n   Ejemplo: /buscar pollo arroz\n\n⭐ /favoritos - Ver tus recetas guardadas\n🍽 /recomendar - Obtener recomendaciones\n🥗 /filtro - Cambiar filtro dietético\n📏 /convertir - Convertir medidas\n❓ /ayuda - Ver ayuda detallada\n\n¿Qué te gustaría cocinar hoy? 👨‍🍳`;\n\nconst keyboard = {\n  inline_keyboard: [\n    [\n      { text: '🔍 Buscar Receta', callback_data: '/ayuda' },\n      { text: '🍽 Recomendaciones', callback_data: '/recomendar' }\n    ],\n    [\n      { text: '⭐ Mis Favoritos', callback_data: '/favoritos' },\n      { text: '🥗 Filtro Dietético', callback_data: '/filtro' }\n    ],\n    [\n      { text: '❓ Ayuda', callback_data: '/ayuda' }\n    ]\n  ]\n};\n\nreturn [{\n  json: {\n    chatId: chatId,\n    userId: userId,\n    message: welcomeMessage,\n    keyboard: keyboard\n  }\n}];"
+      },
+      "id": "format-welcome",
+      "name": "Format Welcome",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://api-gateway:3000/api/users",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"id\": {{ $json.userId }},\n  \"username\": \"{{ $json.username || '' }}\",\n  \"first_name\": \"{{ $json.firstName || '' }}\",\n  \"last_name\": \"{{ $json.lastName || '' }}\"\n}",
+        "options": {}
+      },
+      "id": "register-user-api",
+      "name": "Register User API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [860, 60],
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate search parameters\nconst params = $input.first().json.params;\nconst chatId = $input.first().json.chatId;\nconst userId = $input.first().json.userId;\n\nif (!params.ingredients || params.ingredients.length === 0) {\n  return [{\n    json: {\n      valid: false,\n      chatId: chatId,\n      message: '❌ Por favor indica al menos un ingrediente\\n\\n**Uso:** /buscar [ingrediente1] [ingrediente2] [ingrediente3]\\n\\n**Ejemplos:**\\n• /buscar pollo\\n• /buscar pollo arroz\\n• /buscar tomate cebolla ajo\\n\\n💡 Puedes buscar hasta 3 ingredientes'\n    }\n  }];\n}\n\nif (params.ingredients.length > 3) {\n  return [{\n    json: {\n      valid: false,\n      chatId: chatId,\n      message: '❌ Máximo 3 ingredientes permitidos\\n\\nIngredientes recibidos: ' + params.ingredients.join(', ') + '\\n\\n💡 Intenta con menos ingredientes para mejores resultados'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    valid: true,\n    chatId: chatId,\n    userId: userId,\n    ingredients: params.ingredients\n  }\n}];"
+      },
+      "id": "validate-search",
+      "name": "Validate Search",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 340]
     },
     {
       "parameters": {
         "conditions": {
-          "string": [
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
             {
-              "value1": "={{$json.text}}",
-              "operation": "startsWith",
-              "value2": "/start"
+              "id": "check-valid-search",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
             }
-          ]
-        }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
       },
-      "id": "route-start",
-      "name": "Route: /start",
+      "id": "is-search-valid",
+      "name": "Is Search Valid?",
       "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [650, 200]
+      "typeVersion": 2,
+      "position": [1060, 340]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://recipe-service:3001/api/v1/recipes/search",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"ingredients\": {{ JSON.stringify($json.ingredients) }},\n  \"user_id\": \"{{ $json.userId }}\"\n}",
+        "options": {}
+      },
+      "id": "search-recipes-api",
+      "name": "Search Recipes API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1260, 280],
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format search results\nconst response = $input.first().json;\nconst chatId = $('Validate Search').item.json.chatId;\nconst ingredients = $('Validate Search').item.json.ingredients;\n\nif (response.error || !response.recipes) {\n  return [{\n    json: {\n      chatId: chatId,\n      message: `❌ Error al buscar recetas\\n\\n${response.error || response.detail || 'Error desconocido'}\\n\\nPor favor intenta nuevamente.`\n    }\n  }];\n}\n\nconst recipes = response.recipes || [];\n\nif (recipes.length === 0) {\n  return [{\n    json: {\n      chatId: chatId,\n      message: `🔍 **Búsqueda:** ${ingredients.join(', ')}\\n\\n😕 No encontré recetas con esos ingredientes\\n\\n💡 **Sugerencias:**\\n• Intenta con ingredientes más comunes\\n• Usa nombres en inglés (chicken, rice, tomato)\\n• Busca con menos ingredientes`,\n      keyboard: {\n        inline_keyboard: [\n          [\n            { text: '🍽 Ver Recomendaciones', callback_data: '/recomendar' },\n            { text: '🏠 Menú Principal', callback_data: '/start' }\n          ]\n        ]\n      }\n    }\n  }];\n}\n\nlet message = `🍳 **Recetas encontradas (${recipes.length})**\\n`;\nmessage += `🔍 Ingredientes: ${ingredients.join(', ')}\\n\\n`;\n\nrecipes.slice(0, 5).forEach((recipe, index) => {\n  message += `${index + 1}. **${recipe.name}**\\n`;\n  message += `   🏷 ${recipe.category} | 🌍 ${recipe.area}\\n`;\n  message += `   🆔 ID: ${recipe.id}\\n\\n`;\n});\n\nif (recipes.length > 5) {\n  message += `\\n... y ${recipes.length - 5} recetas más\\n`;\n}\n\nmessage += `\\n💡 Usa /receta [ID] para ver detalles\\n`;\nmessage += `Ejemplo: /receta ${recipes[0].id}`;\n\n// Build inline keyboard with recipe buttons\nconst recipeButtons = recipes.slice(0, 3).map(r => ({\n  text: `📖 ${r.name.substring(0, 20)}...`,\n  callback_data: `/receta ${r.id}`\n}));\n\nconst keyboard = {\n  inline_keyboard: [\n    recipeButtons.slice(0, 2),\n    [\n      { text: '🔍 Nueva Búsqueda', callback_data: '/ayuda' },\n      { text: '🏠 Menú', callback_data: '/start' }\n    ]\n  ]\n};\n\nreturn [{\n  json: {\n    chatId: chatId,\n    message: message,\n    keyboard: keyboard\n  }\n}];"
+      },
+      "id": "format-search-results",
+      "name": "Format Search Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1460, 280]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate recipe detail parameters\nconst params = $input.first().json.params;\nconst chatId = $input.first().json.chatId;\n\nif (!params.recipeId) {\n  return [{\n    json: {\n      valid: false,\n      chatId: chatId,\n      message: '❌ Por favor indica el ID de la receta\\n\\n**Uso:** /receta [ID]\\n\\n**Ejemplo:**\\n/receta 52940\\n\\n💡 Usa /buscar para encontrar recetas y sus IDs'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    valid: true,\n    chatId: chatId,\n    recipeId: params.recipeId\n  }\n}];"
+      },
+      "id": "validate-recipe",
+      "name": "Validate Recipe",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 480]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://recipe-service:3001/api/v1/recipes/{{ $json.recipeId }}",
+        "options": {}
+      },
+      "id": "get-recipe-api",
+      "name": "Get Recipe API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1060, 480],
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format recipe details\nconst response = $input.first().json;\nconst chatId = $('Validate Recipe').item.json.chatId;\nconst recipeId = $('Validate Recipe').item.json.recipeId;\n\nif (response.error || !response.id) {\n  return [{\n    json: {\n      chatId: chatId,\n      message: `❌ No encontré la receta con ID: ${recipeId}\\n\\n${response.error || response.detail || ''}\\n\\n💡 Usa /buscar para encontrar recetas`\n    }\n  }];\n}\n\nconst recipe = response;\n\n// Build ingredients list\nlet ingredientsList = '';\nif (recipe.ingredients && recipe.ingredients.length > 0) {\n  ingredientsList = recipe.ingredients.slice(0, 15).map(ing => {\n    const measure = ing.measure ? `${ing.measure} ` : '';\n    return `• ${measure}${ing.name}`;\n  }).join('\\n');\n  \n  if (recipe.ingredients.length > 15) {\n    ingredientsList += `\\n... y ${recipe.ingredients.length - 15} más`;\n  }\n}\n\n// Truncate instructions if too long\nlet instructions = recipe.instructions || 'No disponibles';\nif (instructions.length > 800) {\n  instructions = instructions.substring(0, 800) + '...\\n\\n[Instrucciones truncadas]';\n}\n\nlet message = `🍳 **${recipe.name}**\\n\\n`;\nmessage += `🏷 **Categoría:** ${recipe.category}\\n`;\nmessage += `🌍 **Cocina:** ${recipe.area}\\n`;\n\nif (recipe.tags && recipe.tags.length > 0) {\n  message += `🏷 **Tags:** ${recipe.tags.join(', ')}\\n`;\n}\n\nmessage += `\\n📝 **Ingredientes:**\\n${ingredientsList}\\n`;\nmessage += `\\n👨‍🍳 **Instrucciones:**\\n${instructions}`;\n\nconst keyboard = {\n  inline_keyboard: [\n    [\n      { text: '⭐ Agregar a Favoritos', callback_data: `/favorito ${recipe.id} ${recipe.name.substring(0, 30)}` },\n    ],\n    [\n      { text: '🔍 Buscar Otra', callback_data: '/ayuda' },\n      { text: '🏠 Menú', callback_data: '/start' }\n    ]\n  ]\n};\n\n// If recipe has image, we'll send it separately\nconst hasImage = recipe.image_url && recipe.image_url.startsWith('http');\n\nreturn [{\n  json: {\n    chatId: chatId,\n    message: message,\n    keyboard: keyboard,\n    imageUrl: hasImage ? recipe.image_url : null,\n    recipeName: recipe.name\n  }\n}];"
+      },
+      "id": "format-recipe-detail",
+      "name": "Format Recipe Detail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1260, 480]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://recipe-service:3001/api/v1/users/{{ $json.userId }}/favorites",
+        "options": {}
+      },
+      "id": "get-favorites-api",
+      "name": "Get Favorites API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [860, 620],
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format favorites list\nconst response = $input.first().json;\nconst chatId = $('Command Router').item.json.chatId;\n\nif (response.error) {\n  return [{\n    json: {\n      chatId: chatId,\n      message: `❌ Error al obtener favoritos\\n\\nIntenta nuevamente más tarde.`\n    }\n  }];\n}\n\nconst favorites = Array.isArray(response) ? response : [];\n\nif (favorites.length === 0) {\n  return [{\n    json: {\n      chatId: chatId,\n      message: `⭐ **Tus Favoritos**\\n\\n😕 Aún no tienes recetas favoritas\\n\\n💡 Busca recetas con /buscar y agrégalas a favoritos\\n\\n📌 Puedes guardar hasta 10 recetas favoritas`,\n      keyboard: {\n        inline_keyboard: [\n          [\n            { text: '🔍 Buscar Recetas', callback_data: '/ayuda' },\n            { text: '🍽 Recomendaciones', callback_data: '/recomendar' }\n          ],\n          [\n            { text: '🏠 Menú Principal', callback_data: '/start' }\n          ]\n        ]\n      }\n    }\n  }];\n}\n\nlet message = `⭐ **Tus Recetas Favoritas (${favorites.length}/10)**\\n\\n`;\n\nfavorites.forEach((fav, index) => {\n  message += `${index + 1}. **${fav.recipe_name}**\\n`;\n  message += `   🆔 ID: ${fav.recipe_id}\\n`;\n  if (fav.recipe_category) {\n    message += `   🏷 ${fav.recipe_category}\\n`;\n  }\n  message += `\\n`;\n});\n\nmessage += `\\n💡 Usa /receta [ID] para ver detalles`;\nmessage += `\\n💡 Usa /eliminar_favorito [ID] para quitar`;\n\n// Create buttons for first 3 favorites\nconst favButtons = favorites.slice(0, 3).map(f => ({\n  text: `📖 ${f.recipe_name.substring(0, 15)}...`,\n  callback_data: `/receta ${f.recipe_id}`\n}));\n\nconst keyboard = {\n  inline_keyboard: [\n    favButtons.slice(0, 2),\n    [\n      { text: '🔍 Buscar Más', callback_data: '/ayuda' },\n      { text: '🏠 Menú', callback_data: '/start' }\n    ]\n  ]\n};\n\nreturn [{\n  json: {\n    chatId: chatId,\n    message: message,\n    keyboard: keyboard\n  }\n}];"
+      },
+      "id": "format-favorites",
+      "name": "Format Favorites",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1060, 620]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate add favorite parameters\nconst params = $input.first().json.params;\nconst chatId = $input.first().json.chatId;\nconst userId = $input.first().json.userId;\n\nif (!params.recipeId) {\n  return [{\n    json: {\n      valid: false,\n      chatId: chatId,\n      message: '❌ Por favor indica el ID de la receta\\n\\n**Uso:** /favorito [ID] [nombre]\\n\\n**Ejemplo:**\\n/favorito 52940 Chicken Curry\\n\\n💡 Primero busca una receta con /buscar'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    valid: true,\n    chatId: chatId,\n    userId: userId,\n    recipeId: params.recipeId,\n    recipeName: params.recipeName || 'Receta ' + params.recipeId\n  }\n}];"
+      },
+      "id": "validate-add-favorite",
+      "name": "Validate Add Favorite",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 760]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://recipe-service:3001/api/v1/users/{{ $json.userId }}/favorites/{{ $json.recipeId }}?recipe_name={{ encodeURIComponent($json.recipeName) }}",
+        "options": {}
+      },
+      "id": "add-favorite-api",
+      "name": "Add Favorite API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1060, 760],
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format add favorite response\nconst response = $input.first().json;\nconst chatId = $('Validate Add Favorite').item.json.chatId;\nconst recipeName = $('Validate Add Favorite').item.json.recipeName;\n\nif (response.error || response.success === false) {\n  let errorMsg = response.error || response.detail || 'Error desconocido';\n  if (errorMsg.includes('Limit') || errorMsg.includes('10')) {\n    errorMsg = 'Has alcanzado el límite de 10 favoritos\\n\\n💡 Elimina alguno con /eliminar_favorito [ID]';\n  }\n  \n  return [{\n    json: {\n      chatId: chatId,\n      message: `❌ No se pudo agregar a favoritos\\n\\n${errorMsg}`\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    chatId: chatId,\n    message: `⭐ **¡Agregado a Favoritos!**\\n\\n📖 ${recipeName}\\n\\n💡 Usa /favoritos para ver todas tus recetas guardadas`,\n    keyboard: {\n      inline_keyboard: [\n        [\n          { text: '⭐ Ver Favoritos', callback_data: '/favoritos' },\n          { text: '🔍 Buscar Más', callback_data: '/ayuda' }\n        ],\n        [\n          { text: '🏠 Menú Principal', callback_data: '/start' }\n        ]\n      ]\n    }\n  }\n}];"
+      },
+      "id": "format-add-favorite",
+      "name": "Format Add Favorite",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1260, 760]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate remove favorite parameters\nconst params = $input.first().json.params;\nconst chatId = $input.first().json.chatId;\nconst userId = $input.first().json.userId;\n\nif (!params.recipeId) {\n  return [{\n    json: {\n      valid: false,\n      chatId: chatId,\n      message: '❌ Por favor indica el ID de la receta a eliminar\\n\\n**Uso:** /eliminar_favorito [ID]\\n\\n**Ejemplo:**\\n/eliminar_favorito 52940\\n\\n💡 Usa /favoritos para ver tus recetas guardadas'\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    valid: true,\n    chatId: chatId,\n    userId: userId,\n    recipeId: params.recipeId\n  }\n}];"
+      },
+      "id": "validate-remove-favorite",
+      "name": "Validate Remove Favorite",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 900]
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=http://recipe-service:3001/api/v1/users/{{ $json.userId }}/favorites/{{ $json.recipeId }}",
+        "options": {}
+      },
+      "id": "remove-favorite-api",
+      "name": "Remove Favorite API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1060, 900],
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format remove favorite response\nconst response = $input.first().json;\nconst chatId = $('Validate Remove Favorite').item.json.chatId;\nconst recipeId = $('Validate Remove Favorite').item.json.recipeId;\n\nif (response.error || response.success === false) {\n  return [{\n    json: {\n      chatId: chatId,\n      message: `❌ No se pudo eliminar de favoritos\\n\\n${response.error || response.detail || 'Receta no encontrada en favoritos'}`\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    chatId: chatId,\n    message: `✅ **Eliminado de Favoritos**\\n\\n🆔 Receta ID: ${recipeId}\\n\\n💡 Usa /favoritos para ver tus recetas restantes`,\n    keyboard: {\n      inline_keyboard: [\n        [\n          { text: '⭐ Ver Favoritos', callback_data: '/favoritos' },\n          { text: '🔍 Buscar Más', callback_data: '/ayuda' }\n        ],\n        [\n          { text: '🏠 Menú Principal', callback_data: '/start' }\n        ]\n      ]\n    }\n  }\n}];"
+      },
+      "id": "format-remove-favorite",
+      "name": "Format Remove Favorite",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1260, 900]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Handle dietary filter command\nconst params = $input.first().json.params;\nconst chatId = $input.first().json.chatId;\nconst userId = $input.first().json.userId;\n\nconst filterLabels = {\n  'none': '🍽 Sin filtro',\n  'vegetarian': '🥗 Vegetariano',\n  'vegan': '🌱 Vegano',\n  'gluten_free': '🌾 Sin Gluten'\n};\n\n// If no filter specified, show options\nif (params.showOptions || !params.filter) {\n  return [{\n    json: {\n      action: 'show_options',\n      chatId: chatId,\n      message: `🥗 **Filtro Dietético**\\n\\nSelecciona tu preferencia alimenticia:\\n\\n🍽 **Sin filtro** - Ver todas las recetas\\n🥗 **Vegetariano** - Sin carne\\n🌱 **Vegano** - Sin productos animales\\n🌾 **Sin Gluten** - Apto para celíacos\\n\\n💡 El filtro se aplicará a todas tus búsquedas`,\n      keyboard: {\n        inline_keyboard: [\n          [\n            { text: '🍽 Sin Filtro', callback_data: '/filtro none' },\n            { text: '🥗 Vegetariano', callback_data: '/filtro vegetarian' }\n          ],\n          [\n            { text: '🌱 Vegano', callback_data: '/filtro vegan' },\n            { text: '🌾 Sin Gluten', callback_data: '/filtro gluten_free' }\n          ],\n          [\n            { text: '🏠 Menú Principal', callback_data: '/start' }\n          ]\n        ]\n      }\n    }\n  }];\n}\n\n// Filter specified, update it\nreturn [{\n  json: {\n    action: 'update_filter',\n    chatId: chatId,\n    userId: userId,\n    filter: params.filter,\n    filterLabel: filterLabels[params.filter] || params.filter\n  }\n}];"
+      },
+      "id": "handle-filter",
+      "name": "Handle Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 1040]
     },
     {
       "parameters": {
         "conditions": {
-          "string": [
+          "options": { "caseSensitive": true },
+          "conditions": [
             {
-              "value1": "={{$json.text}}",
-              "operation": "startsWith",
-              "value2": "/buscar"
+              "id": "check-filter-action",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "update_filter",
+              "operator": { "type": "string", "operation": "equals" }
             }
-          ]
-        }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
       },
-      "id": "route-search",
-      "name": "Route: /buscar",
+      "id": "is-filter-update",
+      "name": "Is Filter Update?",
       "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [650, 400]
+      "typeVersion": 2,
+      "position": [1060, 1040]
     },
     {
       "parameters": {
-        "conditions": {
-          "string": [
-            {
-              "value1": "={{$json.text}}",
-              "operation": "startsWith",
-              "value2": "/favoritos"
-            }
-          ]
+        "method": "PUT",
+        "url": "=http://recipe-service:3001/api/v1/users/{{ $json.userId }}/filter?dietary_filter={{ $json.filter }}",
+        "options": {}
+      },
+      "id": "update-filter-api",
+      "name": "Update Filter API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1260, 1000],
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format filter update response\nconst response = $input.first().json;\nconst chatId = $('Handle Filter').item.json.chatId;\nconst filterLabel = $('Handle Filter').item.json.filterLabel;\n\nif (response.error) {\n  return [{\n    json: {\n      chatId: chatId,\n      message: `❌ Error al actualizar filtro\\n\\n${response.error || 'Intenta nuevamente'}`\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    chatId: chatId,\n    message: `✅ **Filtro Actualizado**\\n\\n${filterLabel}\\n\\n💡 Este filtro se aplicará a tus próximas búsquedas\\n\\n¿Qué te gustaría hacer ahora?`,\n    keyboard: {\n      inline_keyboard: [\n        [\n          { text: '🔍 Buscar Recetas', callback_data: '/ayuda' },\n          { text: '🍽 Recomendaciones', callback_data: '/recomendar' }\n        ],\n        [\n          { text: '🏠 Menú Principal', callback_data: '/start' }\n        ]\n      ]\n    }\n  }\n}];"
+      },
+      "id": "format-filter-update",
+      "name": "Format Filter Update",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1460, 1000]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://recipe-service:3001/api/v1/users/{{ $json.userId }}/recommendations",
+        "options": {}
+      },
+      "id": "get-recommendations-api",
+      "name": "Get Recommendations API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [860, 1180],
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format recommendations\nconst response = $input.first().json;\nconst chatId = $('Command Router').item.json.chatId;\n\nif (response.error || !response.recipes) {\n  return [{\n    json: {\n      chatId: chatId,\n      message: `❌ Error al obtener recomendaciones\\n\\nIntenta nuevamente más tarde.`\n    }\n  }];\n}\n\nconst recipes = response.recipes || [];\n\nif (recipes.length === 0) {\n  return [{\n    json: {\n      chatId: chatId,\n      message: `🍽 **Recomendaciones**\\n\\n😕 No hay recomendaciones disponibles\\n\\nIntenta de nuevo más tarde`,\n      keyboard: {\n        inline_keyboard: [\n          [\n            { text: '🔍 Buscar Recetas', callback_data: '/ayuda' },\n            { text: '🏠 Menú', callback_data: '/start' }\n          ]\n        ]\n      }\n    }\n  }];\n}\n\nlet message = `🍽 **¡Recomendaciones para ti!**\\n\\nBasadas en tus preferencias:\\n\\n`;\n\nrecipes.forEach((recipe, index) => {\n  message += `${index + 1}. **${recipe.name}**\\n`;\n  message += `   🏷 ${recipe.category} | 🌍 ${recipe.area}\\n`;\n  message += `   🆔 ID: ${recipe.id}\\n\\n`;\n});\n\nmessage += `\\n💡 Usa /receta [ID] para ver detalles`;\nmessage += `\\n💡 Usa /recomendar para más sugerencias`;\n\nconst recipeButtons = recipes.slice(0, 3).map(r => ({\n  text: `📖 ${r.name.substring(0, 18)}...`,\n  callback_data: `/receta ${r.id}`\n}));\n\nconst keyboard = {\n  inline_keyboard: [\n    recipeButtons.slice(0, 2),\n    [\n      { text: '🔄 Más Sugerencias', callback_data: '/recomendar' },\n      { text: '🏠 Menú', callback_data: '/start' }\n    ]\n  ]\n};\n\nreturn [{\n  json: {\n    chatId: chatId,\n    message: message,\n    keyboard: keyboard\n  }\n}];"
+      },
+      "id": "format-recommendations",
+      "name": "Format Recommendations",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1060, 1180]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Handle unit conversion\nconst params = $input.first().json.params;\nconst chatId = $input.first().json.chatId;\n\n// Conversion factors (to ml for volume, to g for weight)\nconst conversions = {\n  // Volume -> ml\n  'taza': { factor: 236.588, type: 'volume', to: 'ml' },\n  'tazas': { factor: 236.588, type: 'volume', to: 'ml' },\n  'cup': { factor: 236.588, type: 'volume', to: 'ml' },\n  'cups': { factor: 236.588, type: 'volume', to: 'ml' },\n  'cucharada': { factor: 14.787, type: 'volume', to: 'ml' },\n  'cucharadas': { factor: 14.787, type: 'volume', to: 'ml' },\n  'tbsp': { factor: 14.787, type: 'volume', to: 'ml' },\n  'cucharadita': { factor: 4.929, type: 'volume', to: 'ml' },\n  'cucharaditas': { factor: 4.929, type: 'volume', to: 'ml' },\n  'tsp': { factor: 4.929, type: 'volume', to: 'ml' },\n  'litro': { factor: 1000, type: 'volume', to: 'ml' },\n  'litros': { factor: 1000, type: 'volume', to: 'ml' },\n  'l': { factor: 1000, type: 'volume', to: 'ml' },\n  'ml': { factor: 1, type: 'volume', to: 'ml' },\n  'oz': { factor: 29.574, type: 'volume', to: 'ml' },\n  'onza': { factor: 29.574, type: 'volume', to: 'ml' },\n  'onzas': { factor: 29.574, type: 'volume', to: 'ml' },\n  \n  // Weight -> g\n  'lb': { factor: 453.592, type: 'weight', to: 'g' },\n  'libra': { factor: 453.592, type: 'weight', to: 'g' },\n  'libras': { factor: 453.592, type: 'weight', to: 'g' },\n  'kg': { factor: 1000, type: 'weight', to: 'g' },\n  'kilogramo': { factor: 1000, type: 'weight', to: 'g' },\n  'kilogramos': { factor: 1000, type: 'weight', to: 'g' },\n  'g': { factor: 1, type: 'weight', to: 'g' },\n  'gramo': { factor: 1, type: 'weight', to: 'g' },\n  'gramos': { factor: 1, type: 'weight', to: 'g' }\n};\n\nif (!params.amount || !params.fromUnit) {\n  return [{\n    json: {\n      chatId: chatId,\n      message: `📏 **Convertidor de Medidas**\\n\\n**Uso:** /convertir [cantidad] [unidad] a [unidad]\\n\\n**Ejemplos:**\\n• /convertir 2 tazas a ml\\n• /convertir 500 g a lb\\n• /convertir 1 litro a oz\\n\\n**Unidades soportadas:**\\n\\n📊 **Volumen:**\\ntaza, cucharada, cucharadita, litro, ml, oz\\n\\n⚖️ **Peso:**\\nlb, kg, g, gramo\\n\\n💡 Tip: También puedes escribir:\\n\"cup\", \"tbsp\", \"tsp\" para inglés`\n    }\n  }];\n}\n\nconst fromUnit = params.fromUnit.toLowerCase();\nconst toUnit = (params.toUnit || '').toLowerCase();\nconst amount = params.amount;\n\nconst fromConv = conversions[fromUnit];\n\nif (!fromConv) {\n  return [{\n    json: {\n      chatId: chatId,\n      message: `❌ Unidad \"${fromUnit}\" no reconocida\\n\\n**Unidades válidas:**\\n• Volumen: taza, cucharada, cucharadita, litro, ml, oz\\n• Peso: lb, kg, g\\n\\n💡 Usa /convertir para ver ejemplos`\n    }\n  }];\n}\n\n// Convert to base unit first\nconst baseValue = amount * fromConv.factor;\nconst baseUnit = fromConv.to;\n\nlet result = '';\nlet resultValue = 0;\nlet resultUnit = '';\n\n// If target unit specified and valid\nif (toUnit && conversions[toUnit]) {\n  const toConv = conversions[toUnit];\n  if (toConv.type === fromConv.type) {\n    resultValue = baseValue / toConv.factor;\n    resultUnit = toUnit;\n    result = `${amount} ${fromUnit} = **${resultValue.toFixed(2)} ${resultUnit}**`;\n  } else {\n    result = `❌ No se puede convertir ${fromConv.type} a ${toConv.type}`;\n  }\n} else {\n  // Default conversion to base unit\n  resultValue = baseValue;\n  resultUnit = baseUnit;\n  result = `${amount} ${fromUnit} = **${resultValue.toFixed(2)} ${resultUnit}**`;\n}\n\nconst message = `📏 **Conversión**\\n\\n${result}\\n\\n💡 Usa /convertir para más conversiones`;\n\nreturn [{\n  json: {\n    chatId: chatId,\n    message: message,\n    keyboard: {\n      inline_keyboard: [\n        [\n          { text: '📏 Otra Conversión', callback_data: '/convertir' },\n          { text: '🏠 Menú', callback_data: '/start' }\n        ]\n      ]\n    }\n  }\n}];"
+      },
+      "id": "handle-conversion",
+      "name": "Handle Conversion",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 1320]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate help message\nconst chatId = $input.first().json.chatId;\n\nconst helpMessage = `❓ **Ayuda - Chef Bot**\\n\\n**Comandos Disponibles:**\\n\\n🔍 **/buscar** [ingredientes]\\nBusca recetas por ingredientes (máx. 3)\\n• Ejemplo: /buscar pollo arroz\\n• Ejemplo: /buscar tomate cebolla ajo\\n\\n📖 **/receta** [ID]\\nVer detalles completos de una receta\\n• Ejemplo: /receta 52940\\n\\n⭐ **/favoritos**\\nVer tus recetas guardadas (máx. 10)\\n\\n➕ **/favorito** [ID] [nombre]\\nAgregar receta a favoritos\\n• Ejemplo: /favorito 52940 Chicken Curry\\n\\n➖ **/eliminar_favorito** [ID]\\nQuitar receta de favoritos\\n• Ejemplo: /eliminar_favorito 52940\\n\\n🥗 **/filtro** [tipo]\\nCambiar filtro dietético\\n• Opciones: none, vegetarian, vegan, gluten_free\\n• Ejemplo: /filtro vegetarian\\n\\n🍽 **/recomendar**\\nObtener recomendaciones personalizadas\\n\\n📏 **/convertir** [cantidad] [unidad] a [unidad]\\nConvertir medidas de cocina\\n• Ejemplo: /convertir 2 tazas a ml\\n• Ejemplo: /convertir 500 g a lb\\n\\n**Tips:**\\n• Usa nombres de ingredientes en inglés para mejores resultados\\n• Puedes guardar hasta 10 favoritos\\n• El filtro dietético se aplica a todas las búsquedas\\n\\n**¿Necesitas más ayuda?**\\nEscríbenos a @chefbot_support`;\n\nconst keyboard = {\n  inline_keyboard: [\n    [\n      { text: '🔍 Buscar Receta', callback_data: '/buscar' },\n      { text: '⭐ Mis Favoritos', callback_data: '/favoritos' }\n    ],\n    [\n      { text: '🍽 Recomendaciones', callback_data: '/recomendar' },\n      { text: '🥗 Filtro', callback_data: '/filtro' }\n    ],\n    [\n      { text: '📏 Convertidor', callback_data: '/convertir' },\n      { text: '🏠 Menú', callback_data: '/start' }\n    ]\n  ]\n};\n\nreturn [{\n  json: {\n    chatId: chatId,\n    message: helpMessage,\n    keyboard: keyboard\n  }\n}];"
+      },
+      "id": "format-help",
+      "name": "Format Help",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 1460]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Handle unknown commands or natural language\nconst chatId = $input.first().json.chatId;\nconst text = $input.first().json.originalText;\nconst command = $input.first().json.command;\n\nlet message = '';\n\nif (command === 'natural' && text) {\n  // Could be a natural language query - suggest search\n  const words = text.split(' ').filter(w => w.length > 2).slice(0, 3);\n  \n  if (words.length > 0) {\n    message = `🤔 ¿Buscas recetas con: ${words.join(', ')}?\\n\\n💡 Usa el comando:\\n/buscar ${words.join(' ')}\\n\\nO selecciona una opción:`;\n  } else {\n    message = `👋 ¡Hola! No entendí tu mensaje.\\n\\n💡 Prueba con:\\n• /buscar [ingredientes]\\n• /ayuda para ver comandos`;\n  }\n} else {\n  message = `❓ Comando \"/${command}\" no reconocido\\n\\n💡 Usa /ayuda para ver los comandos disponibles`;\n}\n\nconst keyboard = {\n  inline_keyboard: [\n    [\n      { text: '🔍 Buscar Receta', callback_data: '/ayuda' },\n      { text: '❓ Ver Ayuda', callback_data: '/ayuda' }\n    ],\n    [\n      { text: '🏠 Menú Principal', callback_data: '/start' }\n    ]\n  ]\n};\n\nreturn [{\n  json: {\n    chatId: chatId,\n    message: message,\n    keyboard: keyboard\n  }\n}];"
+      },
+      "id": "handle-unknown",
+      "name": "Handle Unknown",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 1600]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "parse_mode": "Markdown",
+          "reply_markup": "={{ JSON.stringify($json.keyboard || {}) }}"
         }
       },
-      "id": "route-favorites",
-      "name": "Route: /favoritos",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [650, 600]
+      "id": "telegram-send",
+      "name": "Send Telegram Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1660, 700],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram_credentials",
+          "name": "Telegram Bot API"
+        }
+      }
     }
   ],
+  "pinData": {},
   "connections": {
-    "Telegram Webhook": {
+    "Telegram Trigger": {
       "main": [
         [
           {
@@ -94,17 +572,388 @@
       "main": [
         [
           {
-            "node": "Route: /start",
+            "node": "Command Router",
             "type": "main",
             "index": 0
-          },
+          }
+        ]
+      ]
+    },
+    "Command Router": {
+      "main": [
+        [
           {
-            "node": "Route: /buscar",
+            "node": "Register User API",
             "type": "main",
             "index": 0
-          },
+          }
+        ],
+        [
           {
-            "node": "Route: /favoritos",
+            "node": "Validate Search",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validate Recipe",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Favorites API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validate Add Favorite",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validate Remove Favorite",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Filter",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Recommendations API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Conversion",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Help",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Unknown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Register User API": {
+      "main": [
+        [
+          {
+            "node": "Format Welcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Welcome": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Search": {
+      "main": [
+        [
+          {
+            "node": "Is Search Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Search Valid?": {
+      "main": [
+        [
+          {
+            "node": "Search Recipes API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Recipes API": {
+      "main": [
+        [
+          {
+            "node": "Format Search Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Search Results": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Recipe": {
+      "main": [
+        [
+          {
+            "node": "Get Recipe API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Recipe API": {
+      "main": [
+        [
+          {
+            "node": "Format Recipe Detail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Recipe Detail": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Favorites API": {
+      "main": [
+        [
+          {
+            "node": "Format Favorites",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Favorites": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Add Favorite": {
+      "main": [
+        [
+          {
+            "node": "Add Favorite API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Favorite API": {
+      "main": [
+        [
+          {
+            "node": "Format Add Favorite",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Add Favorite": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Remove Favorite": {
+      "main": [
+        [
+          {
+            "node": "Remove Favorite API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove Favorite API": {
+      "main": [
+        [
+          {
+            "node": "Format Remove Favorite",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Remove Favorite": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Filter": {
+      "main": [
+        [
+          {
+            "node": "Is Filter Update?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Filter Update?": {
+      "main": [
+        [
+          {
+            "node": "Update Filter API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Filter API": {
+      "main": [
+        [
+          {
+            "node": "Format Filter Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Filter Update": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Recommendations API": {
+      "main": [
+        [
+          {
+            "node": "Format Recommendations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Recommendations": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Conversion": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Help": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Unknown": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Message",
             "type": "main",
             "index": 0
           }
@@ -112,7 +961,15 @@
       ]
     }
   },
+  "active": false,
   "settings": {
     "executionOrder": "v1"
-  }
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCreatedBy": "Chef Bot Team",
+    "instanceId": "chef-bot-telegram"
+  },
+  "id": "chef-bot-telegram-workflow",
+  "tags": ["telegram", "bot", "recipes", "cooking"]
 }

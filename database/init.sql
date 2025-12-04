@@ -3,6 +3,10 @@
 -- Sistema de Asistente de Recetas de Cocina
 -- ==============================================
 
+-- Create database if not exists (PostgreSQL no soporta IF NOT EXISTS para databases)
+-- Esta línea se ejecutará si se corre manualmente, pero en docker-entrypoint-initdb.d
+-- la base de datos ya debería existir por la variable POSTGRES_DB
+
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
