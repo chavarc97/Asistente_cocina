@@ -7,9 +7,9 @@ services:
     image: postgres:15-alpine
     container_name: chef_postgres
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-chef_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ChefSecure123!}
-      POSTGRES_DB: ${POSTGRES_DB:-chef_db}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -18,7 +18,7 @@ services:
     networks:
       - chef-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chef_user}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -144,6 +144,8 @@ services:
       - N8N_BASIC_AUTH_ACTIVE=${N8N_BASIC_AUTH_ACTIVE:-true}
       - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:-admin}
       - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:-n8n_admin_123}
+      - N8N_BASIC_AUTH_EXCLUDED_PATHS=${N8N_BASIC_AUTH_EXCLUDED_PATHS:-webhook,webhook-test}
+      - N8N_SECURE_COOKIE=${N8N_SECURE_COOKIE:-false}
       - N8N_HOST=${N8N_HOST:-0.0.0.0}
       - N8N_PORT=${N8N_PORT:-5678}
       - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
@@ -152,6 +154,7 @@ services:
       - N8N_METRICS=true
       - N8N_SKIP_WEBHOOK_DEREGISTRATION_SHUTDOWN=true
       - N8N_PUSH_BACKEND=websocket
+      - N8N_PROXY_HOPS=1
     ports:
       - "5678:5678"
     volumes:
