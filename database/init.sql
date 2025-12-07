@@ -285,8 +285,8 @@ GRANT ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public TO chef_user;
 
 DO $$
 BEGIN
-    RAISE NOTICE '✅ Chef Bot Database initialized successfully!';
-    RAISE NOTICE '📊 Tables created: users, favorites, search_history, recipe_cache, user_sessions, conversion_units';
-    RAISE NOTICE '🔧 Functions and triggers configured';
-    RAISE NOTICE '📈 Views created: user_stats, popular_recipes';
+    RAISE NOTICE 'Chef Bot Database initialized successfully!';
+    RAISE NOTICE 'Tables created: users, favorites, search_history, recipe_cache, user_sessions, conversion_units';
+    RAISE NOTICE 'Functions and triggers configured';
+    RAISE NOTICE 'Views created: user_stats, popular_recipes';
 END $$;

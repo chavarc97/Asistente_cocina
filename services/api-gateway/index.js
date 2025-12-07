@@ -134,8 +134,8 @@ class APIGateway {
     // Iniciar el gateway
     start() {
         this.app.listen(this.port, () => {
-            this.logger.info(`🚀 API Gateway running on port ${this.port}`);
-            this.logger.info('📋 Registered services:', this.serviceRegistry.getServices());
+            this.logger.info(`API Gateway running on port ${this.port}`);
+            this.logger.info('Registered services:', this.serviceRegistry.getServices());
         });
     }
 }
