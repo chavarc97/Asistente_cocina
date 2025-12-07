@@ -37,15 +37,38 @@ Deberías ver 6 contenedores "Up":
    http://localhost:5678
    ```
 
-2. **Login con:**
-   - Usuario: `admin`
-   - Contraseña: `n8n_admin_123`
+2. **Si aparece un formulario de registro, completa:**
+   - Email: `admin@chefbot.local`
+   - First Name: `Admin`
+   - Last Name: `ChefBot`
+   - Password: `n8n_admin_123`
+
+   **Si aparece login directo, usa:**
+   - Email: `admin@chefbot.local`
+   - Password: `Admin_123`
 
 3. **Importar el workflow:**
-   - Haz clic en el menú (☰) arriba a la izquierda
-   - Selecciona "Import from File"
+
+   **OPCIÓN A - Importar desde archivo (Recomendado):**
+   - Presiona `Cmd+O` (Mac) o `Ctrl+O` (Windows/Linux)
+   - O busca en la barra lateral un ícono de menú (⋮ o ≡)
+   - Selecciona "Import from File" o "Import Workflow"
    - Navega y selecciona: `n8n/workflows/telegram-chef-bot.json`
-   - El workflow se importará con todos los nodos
+   - El workflow se importará automáticamente
+
+   **OPCIÓN B - Si la importación no funciona:**
+
+   Por ahora, vamos a crear un workflow simple de prueba:
+
+   1. Haz clic en **"Start from scratch"**
+   2. Agrega un nodo "Webhook" desde el menú de nodos
+   3. Configura el webhook:
+      - **Webhook Path**: `telegram`
+      - **HTTP Method**: `POST`
+   4. Guarda el workflow con el nombre: "Telegram Chef Bot"
+   5. Activa el workflow (toggle en la esquina superior derecha)
+
+   **NOTA:** Este es un workflow básico temporal. Más adelante completaremos la configuración completa.
 
 4. **Configurar credenciales de Telegram:**
    - Busca el nodo "Telegram Trigger" (primer nodo a la izquierda)

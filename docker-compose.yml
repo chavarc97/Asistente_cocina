@@ -141,10 +141,18 @@ services:
     image: n8nio/n8n:latest
     container_name: chef_n8n
     environment:
+      # Credenciales del propietario inicial
+      - N8N_USER_MANAGEMENT_DISABLED=${N8N_USER_MANAGEMENT_DISABLED:-true}
+      - N8N_OWNER_EMAIL=${N8N_OWNER_EMAIL:-admin@chefbot.local}
+      - N8N_OWNER_FIRST_NAME=${N8N_OWNER_FIRST_NAME:-Admin}
+      - N8N_OWNER_LAST_NAME=${N8N_OWNER_LAST_NAME:-ChefBot}
+      - N8N_OWNER_PASSWORD=${N8N_OWNER_PASSWORD:-Admin_123}
+      # Autenticación básica (backup)
       - N8N_BASIC_AUTH_ACTIVE=${N8N_BASIC_AUTH_ACTIVE:-true}
       - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:-admin}
-      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:-n8n_admin_123}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:-Admin_123}
       - N8N_BASIC_AUTH_EXCLUDED_PATHS=${N8N_BASIC_AUTH_EXCLUDED_PATHS:-webhook,webhook-test}
+      # Configuración general
       - N8N_SECURE_COOKIE=${N8N_SECURE_COOKIE:-false}
       - N8N_HOST=${N8N_HOST:-0.0.0.0}
       - N8N_PORT=${N8N_PORT:-5678}
