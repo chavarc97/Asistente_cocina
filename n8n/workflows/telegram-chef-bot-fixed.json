@@ -210,7 +210,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://api-gateway:3000/api/users",
+        "url": "http://user-service:3002/api/v1/users",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -219,8 +219,10 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"id\": {{ $json.userId }},\n  \"username\": \"{{ $json.username || '' }}\",\n  \"first_name\": \"{{ $json.firstName || '' }}\",\n  \"last_name\": \"{{ $json.lastName || '' }}\"\n}",
-        "options": {}
+        "jsonBody": "={\n  \"telegram_id\": {{ $json.userId }},\n  \"username\": \"{{ $json.username || '' }}\",\n  \"first_name\": \"{{ $json.firstName || '' }}\",\n  \"last_name\": \"{{ $json.lastName || '' }}\"\n}",
+        "options": {
+          "timeout": 10000
+        }
       },
       "id": "register-user-api",
       "name": "Register User API",
@@ -535,7 +537,7 @@
       "parameters": {
         "resource": "message",
         "operation": "sendMessage",
-        "chatId": "={{ $json.chatId }}",
+        "chatId": "={{ $json.chatId || $('Command Router').item.json.chatId }}",
         "text": "={{ $json.message }}",
         "additionalFields": {
           "parse_mode": "Markdown",
